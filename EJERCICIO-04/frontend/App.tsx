@@ -1,12 +1,12 @@
-// App.tsx — Goodfood Fast Food Banner & Restaurant Carousel
+// App.tsx — Minimalist, Clean & Modern Restaurant Guide
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
-  Animated,
   Dimensions,
   Image,
   KeyboardAvoidingView,
   Platform,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,15 +14,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
 import Constants from 'expo-constants';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const CARD_WIDTH = Math.min(360, Math.round(SCREEN_WIDTH * 0.85));
-const CARD_SPACING = 14;
-const SNAP_INTERVAL = CARD_WIDTH + CARD_SPACING;
-const SIDE_PADDING = (SCREEN_WIDTH - CARD_WIDTH) / 2;
-
-const BURGER_IMG = require('./assets/goodfood_burger.jpg');
 
 const IP = Constants.expoConfig?.hostUri?.split(':')[0] ?? 'localhost';
 const API_URL = `http://${IP}:3000`;
@@ -32,80 +27,73 @@ type Restaurante = {
   nombre: string;
   tipo: string;
   ciudad: string;
-  puntuacion: number;
+  puntuacion: number | string;
 };
 
-// Imagen según categoría culinaria
+// Categorías rápidas para filtrado y registro
+const CATEGORIAS_RAPIDAS = [
+  'Todos',
+  'Italiano',
+  'Japonés',
+  'Chino',
+  'Mexicano',
+  'Hamburguesa',
+  'Cafetería',
+];
+
+// Curated high-resolution culinary photography
 const getFoodImageUri = (tipo: string): string => {
-  const t = tipo.toLowerCase();
+  const t = (tipo || '').toLowerCase();
   if (t.includes('ital') || t.includes('pizz') || t.includes('pasta')) {
-    return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=500&auto=format&fit=crop&q=80';
-  }
-  if (t.includes('chin') || t.includes('wok') || t.includes('asia') || t.includes('ramen')) {
-    return 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=500&auto=format&fit=crop&q=80';
+    return 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=800&auto=format&fit=crop&q=80';
   }
   if (t.includes('japon') || t.includes('sush')) {
-    return 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=500&auto=format&fit=crop&q=80';
+    return 'https://images.unsplash.com/photo-1579871494447-9811cf80d66c?w=800&auto=format&fit=crop&q=80';
+  }
+  if (t.includes('chin') || t.includes('wok') || t.includes('asia') || t.includes('ramen')) {
+    return 'https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=800&auto=format&fit=crop&q=80';
   }
   if (t.includes('mexic') || t.includes('taco')) {
-    return 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=500&auto=format&fit=crop&q=80';
+    return 'https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=800&auto=format&fit=crop&q=80';
   }
-  if (t.includes('cafe') || t.includes('café') || t.includes('postr')) {
-    return 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=500&auto=format&fit=crop&q=80';
+  if (t.includes('cafe') || t.includes('café') || t.includes('postr') || t.includes('bakery')) {
+    return 'https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=800&auto=format&fit=crop&q=80';
   }
-  return ''; // Usará la hamburguesa por defecto
+  if (t.includes('burg') || t.includes('fast')) {
+    return 'https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=800&auto=format&fit=crop&q=80';
+  }
+  return 'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&auto=format&fit=crop&q=80';
+};
+
+const getPuntuacionLabel = (val: number): string => {
+  if (val >= 9.5) return 'Excepcional';
+  if (val >= 9.0) return 'Excelente';
+  if (val >= 8.0) return 'Muy bueno';
+  if (val >= 7.0) return 'Bueno';
+  return 'Aceptable';
 };
 
 export default function App() {
+  // Form state
   const [nombre, setNombre] = useState('');
   const [tipo, setTipo] = useState('');
   const [ciudad, setCiudad] = useState('');
-  const [puntuacion, setPuntuacion] = useState('9');
-  const [filtroUbicacion, setFiltroUbicacion] = useState('');
+  const [puntuacion, setPuntuacion] = useState(9);
   const [mostrarForm, setMostrarForm] = useState(false);
-  const [mensaje, setMensaje] = useState('');
+
+  // Search & Filter state
+  const [busqueda, setBusqueda] = useState('');
+  const [categoriaSeleccionada, setCategoriaSeleccionada] = useState('Todos');
+
+  // Data & Feedback state
   const [restaurantes, setRestaurantes] = useState<Restaurante[]>([]);
+  const [cargando, setCargando] = useState(false);
+  const [guardando, setGuardando] = useState(false);
+  const [mensaje, setMensaje] = useState<{ tipo: 'ok' | 'error'; texto: string } | null>(null);
 
-  const scrollX = useRef(new Animated.Value(0)).current;
-
-  async function guardar() {
-    if (!nombre.trim() || !tipo.trim() || !ciudad.trim()) {
-      setMensaje('⚠️ Por favor completa los campos');
-      return;
-    }
-
-    try {
-      const parsedPuntuacion = Math.max(1, Math.min(10, parseInt(puntuacion, 10) || 9));
-
-      const respuesta = await fetch(API_URL + '/restaurantes', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          nombre: nombre.trim(),
-          tipo: tipo.trim(),
-          ciudad: ciudad.trim(),
-          puntuacion: parsedPuntuacion,
-        }),
-      });
-
-      if (respuesta.ok) {
-        setMensaje('✅ ¡Restaurante guardado en Goodfood!');
-        setNombre('');
-        setTipo('');
-        setCiudad('');
-        setPuntuacion('9');
-        setMostrarForm(false);
-        await mostrar();
-      } else {
-        setMensaje('❌ Error al guardar');
-      }
-    } catch (error) {
-      console.log(error);
-      setMensaje('❌ Error de conexión al guardar');
-    }
-  }
-
-  async function mostrar() {
+  // Cargar lista desde la API
+  async function cargarRestaurantes() {
+    setCargando(true);
     try {
       const respuesta = await fetch(API_URL + '/restaurantes', {
         method: 'GET',
@@ -116,368 +104,427 @@ export default function App() {
         setRestaurantes(data);
       }
     } catch (error) {
-      console.log(error);
-      setMensaje('Error al obtener restaurantes');
+      console.log('Error al conectar:', error);
+      mostrarNotificacion('error', 'No se pudo conectar con el servidor.');
+    } finally {
+      setCargando(false);
     }
   }
 
   useEffect(() => {
-    mostrar();
+    cargarRestaurantes();
   }, []);
 
-  const restaurantesFiltrados = restaurantes.filter((r) => {
-    if (!filtroUbicacion.trim()) return true;
-    const q = filtroUbicacion.toLowerCase();
-    return (
-      r.ciudad.toLowerCase().includes(q) ||
-      r.nombre.toLowerCase().includes(q) ||
-      r.tipo.toLowerCase().includes(q)
-    );
+  function mostrarNotificacion(tipo: 'ok' | 'error', texto: string) {
+    setMensaje({ tipo, texto });
+    setTimeout(() => {
+      setMensaje(null);
+    }, 3800);
+  }
+
+  // Guardar nuevo restaurante
+  async function guardarRestaurante() {
+    if (!nombre.trim() || !tipo.trim() || !ciudad.trim()) {
+      mostrarNotificacion('error', 'Por favor completa todos los campos requeridos.');
+      return;
+    }
+
+    if (nombre.trim().length < 3) {
+      mostrarNotificacion('error', 'El nombre debe tener al menos 3 caracteres.');
+      return;
+    }
+
+    setGuardando(true);
+    try {
+      const respuesta = await fetch(API_URL + '/restaurantes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          nombre: nombre.trim(),
+          tipo: tipo.trim(),
+          ciudad: ciudad.trim(),
+          puntuacion: Math.round(puntuacion),
+        }),
+      });
+
+      if (respuesta.ok) {
+        mostrarNotificacion('ok', 'Restaurante guardado exitosamente');
+        setNombre('');
+        setTipo('');
+        setCiudad('');
+        setPuntuacion(9);
+        setMostrarForm(false);
+        await cargarRestaurantes();
+      } else {
+        const errData = await respuesta.json().catch(() => null);
+        const errMsg = errData?.message
+          ? Array.isArray(errData.message)
+            ? errData.message.join(', ')
+            : errData.message
+          : 'Error al registrar el restaurante';
+        mostrarNotificacion('error', errMsg);
+      }
+    } catch (error) {
+      console.log(error);
+      mostrarNotificacion('error', 'Error de conexión con el backend.');
+    } finally {
+      setGuardando(false);
+    }
+  }
+
+  // Filtrado reactivo por término y categoría
+  const restaurantesFiltrados = restaurantes.filter((item) => {
+    const q = busqueda.trim().toLowerCase();
+    const cumpleTexto =
+      !q ||
+      item.nombre.toLowerCase().includes(q) ||
+      item.tipo.toLowerCase().includes(q) ||
+      item.ciudad.toLowerCase().includes(q);
+
+    const cumpleCategoria =
+      categoriaSeleccionada === 'Todos' ||
+      item.tipo.toLowerCase().includes(categoriaSeleccionada.toLowerCase());
+
+    return cumpleTexto && cumpleCategoria;
   });
 
+  // Estadísticas minimalistas
+  const totalRestaurantes = restaurantes.length;
+  const promedioPuntuacion =
+    totalRestaurantes > 0
+      ? (
+          restaurantes.reduce((acc, curr) => acc + (Number(curr.puntuacion) || 0), 0) /
+          totalRestaurantes
+        ).toFixed(1)
+      : '0.0';
+
+  const ciudadesUnicas = new Set(restaurantes.map((r) => r.ciudad.trim().toLowerCase())).size;
+
   return (
-    <SafeAreaView style={styles.outerBackground}>
+    <SafeAreaView style={styles.safeArea}>
+      <StatusBar style="dark" />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={{ flex: 1 }}
+        style={styles.keyboardContainer}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
+          refreshControl={
+            <RefreshControl
+              refreshing={cargando}
+              onRefresh={cargarRestaurantes}
+              colors={['#0F172A']}
+              tintColor="#0F172A"
+            />
+          }
         >
-          {/* Header Superior del Banner Template */}
-          <View style={styles.topHeaderTitleContainer}>
-            <Text style={styles.topHeaderTitle}>BANNER TEMPLATE</Text>
-            <Text style={styles.topHeaderSubtitle}>FAST FOOD</Text>
-          </View>
-
-          {/* MAIN HERO BANNER - GOODFOOD */}
-          <View style={styles.heroBannerCard}>
-            {/* Formas orgánicas de fondo */}
-            <View style={styles.bgOrganicShapeGreen} />
-            <View style={styles.bgOrganicCircleYellow} />
-            <View style={styles.bgOrganicDotRed} />
-
-            {/* Navbar interna de Goodfood */}
-            <View style={styles.goodfoodNavbar}>
-              <Text style={styles.logoText}>Goodfood</Text>
-
-              <View style={styles.navMenuRow}>
-                <Text style={[styles.navItem, styles.navItemActive]}>HOME</Text>
-                <Text style={styles.navItem}>MENU</Text>
-                <Text style={styles.navItem}>ORDER</Text>
-                <Text style={styles.navItem}>DELIVERY</Text>
-              </View>
-
-              <TouchableOpacity
-                onPress={() => setMostrarForm(!mostrarForm)}
-                style={styles.hamburgerBtn}
-              >
-                <Text style={styles.hamburgerIcon}>☰</Text>
-              </TouchableOpacity>
+          {/* Header Superior Minimalista */}
+          <View style={styles.header}>
+            <View>
+              <Text style={styles.headerEyebrow}>GUÍA GASTRONÓMICA</Text>
+              <Text style={styles.headerTitle}>Restaurantes</Text>
             </View>
 
-            {/* Contenido Hero Split */}
-            <View style={styles.heroSplit}>
-              {/* Lado Izquierdo: Textos y Buscador */}
-              <View style={styles.heroLeft}>
-                <Text style={styles.eyebrowText}>BEST IN THE TOWN</Text>
-                <Text style={styles.mainHeading}>
-                  TRY A BETTER &{'\n'}FASTER EATING{'\n'}EXPERIENCE
-                </Text>
-
-                {/* Input estilo ubicación */}
-                <View style={styles.locationInputContainer}>
-                  <Text style={styles.pinIcon}>📍</Text>
-                  <TextInput
-                    style={styles.locationTextInput}
-                    placeholder="Enter your location"
-                    placeholderTextColor="#94A3B8"
-                    value={filtroUbicacion}
-                    onChangeText={setFiltroUbicacion}
-                  />
-                  <TouchableOpacity style={styles.searchCircleBtn}>
-                    <Text style={styles.searchIconText}>🔍</Text>
-                  </TouchableOpacity>
-                </View>
-
-                {/* Redes sociales */}
-                <View style={styles.socialRow}>
-                  <View style={styles.socialDot}>
-                    <Text style={styles.socialDotText}>f</Text>
-                  </View>
-                  <View style={styles.socialDot}>
-                    <Text style={styles.socialDotText}>📷</Text>
-                  </View>
-                  <View style={styles.socialDot}>
-                    <Text style={styles.socialDotText}>🐦</Text>
-                  </View>
-                  <View style={styles.socialDot}>
-                    <Text style={styles.socialDotText}>▶</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Lado Derecho: Hamburguesa Explotada y Badge 30% OFF */}
-              <View style={styles.heroRight}>
-                <Image
-                  source={BURGER_IMG}
-                  style={styles.heroBurgerImage}
-                  resizeMode="contain"
-                />
-
-                {/* Badge 30% OFF circular */}
-                <View style={styles.badgeDiscount}>
-                  <Text style={styles.badgeDiscountPercent}>30%</Text>
-                  <Text style={styles.badgeDiscountText}>OFF</Text>
-                </View>
-
-                {/* Líneas onduladas decorativas */}
-                <View style={styles.wavyDecorContainer}>
-                  <Text style={styles.wavyDecorText}>〰〰〰</Text>
-                  <Text style={styles.wavyDecorText}>〰〰〰</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Botón para alternar formulario de registro */}
-          <View style={styles.actionRow}>
             <TouchableOpacity
-              style={styles.toggleFormButton}
-              activeOpacity={0.85}
+              style={[styles.addButton, mostrarForm && styles.addButtonActive]}
+              activeOpacity={0.8}
               onPress={() => setMostrarForm(!mostrarForm)}
             >
-              <Text style={styles.toggleFormButtonText}>
-                {mostrarForm ? '✕ Cerrar Formulario' : '+ Agregar Nuevo Restaurante'}
+              <Text style={[styles.addButtonText, mostrarForm && styles.addButtonTextActive]}>
+                {mostrarForm ? '✕ Cancelar' : '+ Añadir'}
               </Text>
             </TouchableOpacity>
           </View>
 
-          {/* Formulario estilizado en Goodfood */}
-          {mostrarForm ? (
-            <View style={styles.formCard}>
-              <Text style={styles.formTitle}>REGISTRAR NUEVO SPOT 🍔</Text>
+          {/* Notificación Toast limpia */}
+          {mensaje ? (
+            <View
+              style={[
+                styles.toast,
+                mensaje.tipo === 'ok' ? styles.toastOk : styles.toastError,
+              ]}
+            >
+              <Text style={styles.toastIcon}>
+                {mensaje.tipo === 'ok' ? '✓' : '⚠️'}
+              </Text>
+              <Text style={styles.toastText}>{mensaje.texto}</Text>
+            </View>
+          ) : null}
 
-              <TextInput
-                style={styles.inputPill}
-                placeholder="Nombre del restaurante (ej. Burger Station)"
-                placeholderTextColor="#94A3B8"
-                value={nombre}
-                onChangeText={setNombre}
-              />
+          {/* Formulario Limpio de Registro (Añadir) */}
+          {mostrarForm && (
+            <View style={styles.formContainer}>
+              <View style={styles.formHeader}>
+                <Text style={styles.formTitle}>Registrar Restaurante</Text>
+                <Text style={styles.formSubtitle}>
+                  Ingresa los detalles para agregarlo a la lista
+                </Text>
+              </View>
 
-              <View style={styles.rowInputs}>
+              {/* Campo Nombre */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Nombre del Local *</Text>
                 <TextInput
-                  style={[styles.inputPill, { flex: 1, marginRight: 8 }]}
-                  placeholder="Tipo (ej. Fast Food, Burger)"
+                  style={styles.input}
+                  placeholder="ej. Osteria Francescana"
+                  placeholderTextColor="#94A3B8"
+                  value={nombre}
+                  onChangeText={setNombre}
+                />
+              </View>
+
+              {/* Campo Tipo / Cocina */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Tipo de Cocina *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="ej. Italiano, Sushi, Gourmet"
                   placeholderTextColor="#94A3B8"
                   value={tipo}
                   onChangeText={setTipo}
                 />
+                {/* Sugerencias rápidas en chips */}
+                <View style={styles.chipSuggestionsRow}>
+                  {CATEGORIAS_RAPIDAS.filter((c) => c !== 'Todos').slice(0, 4).map((cat) => (
+                    <TouchableOpacity
+                      key={cat}
+                      style={[
+                        styles.chipSuggestion,
+                        tipo.toLowerCase() === cat.toLowerCase() && styles.chipSuggestionActive,
+                      ]}
+                      onPress={() => setTipo(cat)}
+                    >
+                      <Text
+                        style={[
+                          styles.chipSuggestionText,
+                          tipo.toLowerCase() === cat.toLowerCase() &&
+                            styles.chipSuggestionTextActive,
+                        ]}
+                      >
+                        {cat}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Campo Ciudad */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Ciudad *</Text>
                 <TextInput
-                  style={[styles.inputPill, { flex: 1 }]}
-                  placeholder="Ciudad (ej. Madrid)"
+                  style={styles.input}
+                  placeholder="ej. Madrid, Barcelona, Valencia"
                   placeholderTextColor="#94A3B8"
                   value={ciudad}
                   onChangeText={setCiudad}
                 />
               </View>
 
-              <TextInput
-                style={styles.inputPill}
-                placeholder="Puntuación (1 - 10)"
-                placeholderTextColor="#94A3B8"
-                keyboardType="number-pad"
-                value={puntuacion}
-                onChangeText={setPuntuacion}
-              />
-
-              <TouchableOpacity
-                style={styles.saveSubmitButton}
-                activeOpacity={0.85}
-                onPress={guardar}
-              >
-                <Text style={styles.saveSubmitButtonText}>GUARDAR SPOT</Text>
-              </TouchableOpacity>
-            </View>
-          ) : null}
-
-          {mensaje ? (
-            <View style={styles.messageToast}>
-              <Text style={styles.messageToastText}>{mensaje}</Text>
-            </View>
-          ) : null}
-
-          {/* SECCIÓN DEL CARRUSEL GOODFOOD */}
-          <View style={styles.carouselSection}>
-            <View style={styles.carouselHeader}>
-              <View>
-                <Text style={styles.carouselPreTitle}>RECOMENDADOS HOY</Text>
-                <Text style={styles.carouselMainTitle}>Food Spots Populares</Text>
-              </View>
-              <View style={styles.counterBadge}>
-                <Text style={styles.counterBadgeText}>
-                  {restaurantesFiltrados.length} SPOTS
-                </Text>
-              </View>
-            </View>
-
-            {restaurantesFiltrados.length === 0 ? (
-              <View style={styles.emptyCard}>
-                <Text style={styles.emptyEmoji}>🍔</Text>
-                <Text style={styles.emptyText}>No se encontraron restaurantes</Text>
-                <Text style={styles.emptySubtext}>
-                  {filtroUbicacion
-                    ? `No hay coincidencias para "${filtroUbicacion}"`
-                    : 'Agrega tu primer restaurante con el botón de arriba'}
-                </Text>
-              </View>
-            ) : (
-              <>
-                <Animated.FlatList
-                  data={restaurantesFiltrados}
-                  keyExtractor={(item) => item.id.toString()}
-                  horizontal
-                  showsHorizontalScrollIndicator={false}
-                  snapToInterval={SNAP_INTERVAL}
-                  snapToAlignment="start"
-                  decelerationRate="fast"
-                  bounces={true}
-                  contentContainerStyle={styles.carouselContent}
-                  onScroll={Animated.event(
-                    [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                    { useNativeDriver: true }
-                  )}
-                  scrollEventThrottle={16}
-                  renderItem={({ item, index }) => {
-                    const inputRange = [
-                      (index - 1) * SNAP_INTERVAL,
-                      index * SNAP_INTERVAL,
-                      (index + 1) * SNAP_INTERVAL,
-                    ];
-
-                    const scale = scrollX.interpolate({
-                      inputRange,
-                      outputRange: [0.94, 1, 0.94],
-                      extrapolate: 'clamp',
-                    });
-
-                    const opacity = scrollX.interpolate({
-                      inputRange,
-                      outputRange: [0.8, 1, 0.8],
-                      extrapolate: 'clamp',
-                    });
-
-                    const customImageUri = getFoodImageUri(item.tipo);
-                    const numRating = Number(item.puntuacion) || 9;
-
-                    return (
-                      <Animated.View
+              {/* Selector de Puntuación */}
+              <View style={styles.inputGroup}>
+                <View style={styles.scoreHeaderRow}>
+                  <Text style={styles.inputLabel}>Puntuación (1 a 10)</Text>
+                  <View style={styles.scoreBadge}>
+                    <Text style={styles.scoreBadgeText}>★ {puntuacion}/10</Text>
+                  </View>
+                </View>
+                <View style={styles.scoreButtonsRow}>
+                  {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((score) => (
+                    <TouchableOpacity
+                      key={score}
+                      style={[
+                        styles.scoreBtn,
+                        puntuacion === score && styles.scoreBtnSelected,
+                      ]}
+                      onPress={() => setPuntuacion(score)}
+                    >
+                      <Text
                         style={[
-                          styles.carouselCardContainer,
-                          {
-                            transform: [{ scale }],
-                            opacity,
-                          },
+                          styles.scoreBtnText,
+                          puntuacion === score && styles.scoreBtnTextSelected,
                         ]}
                       >
-                        <View style={styles.goodfoodCard}>
-                          {/* Fondo curvo decorativo */}
-                          <View style={styles.cardPastelCurve} />
-
-                          {/* Cuerpo de la tarjeta split */}
-                          <View style={styles.cardContentRow}>
-                            {/* Información izquierda */}
-                            <View style={styles.cardInfoCol}>
-                              <Text style={styles.cardEyebrow}>
-                                BEST IN {item.ciudad.toUpperCase()}
-                              </Text>
-
-                              <Text style={styles.cardRestaurantName} numberOfLines={2}>
-                                {item.nombre}
-                              </Text>
-
-                              <View style={styles.cardTagsRow}>
-                                <View style={styles.categoryPill}>
-                                  <Text style={styles.categoryPillText}>{item.tipo}</Text>
-                                </View>
-                                <View style={styles.cityPill}>
-                                  <Text style={styles.cityPillText}>📍 {item.ciudad}</Text>
-                                </View>
-                              </View>
-
-                              <TouchableOpacity style={styles.orderNowBtn} activeOpacity={0.85}>
-                                <Text style={styles.orderNowBtnText}>ORDENAR</Text>
-                              </TouchableOpacity>
-                            </View>
-
-                            {/* Imagen derecha con badge de descuento/rating */}
-                            <View style={styles.cardMediaCol}>
-                              <Image
-                                source={
-                                  customImageUri ? { uri: customImageUri } : BURGER_IMG
-                                }
-                                style={styles.cardFoodImage}
-                                resizeMode="contain"
-                              />
-
-                              {/* Badge estilo 30% OFF */}
-                              <View style={styles.cardBadgeScore}>
-                                <Text style={styles.cardBadgeScoreNum}>
-                                  {numRating >= 8.5 ? '30%' : `★ ${numRating.toFixed(0)}`}
-                                </Text>
-                                <Text style={styles.cardBadgeScoreLabel}>
-                                  {numRating >= 8.5 ? 'OFF' : 'TOP'}
-                                </Text>
-                              </View>
-                            </View>
-                          </View>
-                        </View>
-                      </Animated.View>
-                    );
-                  }}
-                />
-
-                {/* Dots indicadores estilo Goodfood */}
-                <View style={styles.paginationDotsContainer}>
-                  {restaurantesFiltrados.map((_, i) => {
-                    const dotInputRange = [
-                      (i - 1) * SNAP_INTERVAL,
-                      i * SNAP_INTERVAL,
-                      (i + 1) * SNAP_INTERVAL,
-                    ];
-
-                    const dotWidth = scrollX.interpolate({
-                      inputRange: dotInputRange,
-                      outputRange: [8, 24, 8],
-                      extrapolate: 'clamp',
-                    });
-
-                    const dotOpacity = scrollX.interpolate({
-                      inputRange: dotInputRange,
-                      outputRange: [0.35, 1, 0.35],
-                      extrapolate: 'clamp',
-                    });
-
-                    return (
-                      <Animated.View
-                        key={i}
-                        style={[
-                          styles.dot,
-                          {
-                            width: dotWidth,
-                            opacity: dotOpacity,
-                          },
-                        ]}
-                      />
-                    );
-                  })}
+                        {score}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
                 </View>
-              </>
+              </View>
+
+              {/* Botón Guardar */}
+              <TouchableOpacity
+                style={[styles.submitButton, guardando && styles.submitButtonDisabled]}
+                disabled={guardando}
+                activeOpacity={0.85}
+                onPress={guardarRestaurante}
+              >
+                <Text style={styles.submitButtonText}>
+                  {guardando ? 'Guardando...' : 'Guardar Restaurante'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Barra de Búsqueda Minimalista */}
+          <View style={styles.searchContainer}>
+            <Text style={styles.searchIcon}>🔍</Text>
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Buscar por nombre, cocina o ciudad..."
+              placeholderTextColor="#94A3B8"
+              value={busqueda}
+              onChangeText={setBusqueda}
+            />
+            {busqueda.length > 0 && (
+              <TouchableOpacity onPress={() => setBusqueda('')} style={styles.clearBtn}>
+                <Text style={styles.clearBtnText}>✕</Text>
+              </TouchableOpacity>
             )}
           </View>
+
+          {/* Selector Horizontal de Categorías */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.categoryScroll}
+          >
+            {CATEGORIAS_RAPIDAS.map((cat) => {
+              const isSelected = categoriaSeleccionada === cat;
+              return (
+                <TouchableOpacity
+                  key={cat}
+                  style={[styles.categoryPill, isSelected && styles.categoryPillActive]}
+                  activeOpacity={0.75}
+                  onPress={() => setCategoriaSeleccionada(cat)}
+                >
+                  <Text
+                    style={[
+                      styles.categoryPillText,
+                      isSelected && styles.categoryPillTextActive,
+                    ]}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </ScrollView>
+
+          {/* Tarjetas de Métricas Resumen */}
+          <View style={styles.metricsRow}>
+            <View style={styles.metricCard}>
+              <Text style={styles.metricValue}>{totalRestaurantes}</Text>
+              <Text style={styles.metricLabel}>Registrados</Text>
+            </View>
+
+            <View style={styles.metricDivider} />
+
+            <View style={styles.metricCard}>
+              <Text style={styles.metricValue}>★ {promedioPuntuacion}</Text>
+              <Text style={styles.metricLabel}>Promedio</Text>
+            </View>
+
+            <View style={styles.metricDivider} />
+
+            <View style={styles.metricCard}>
+              <Text style={styles.metricValue}>{ciudadesUnicas}</Text>
+              <Text style={styles.metricLabel}>Ciudades</Text>
+            </View>
+          </View>
+
+          {/* Encabezado de la Sección de Lista */}
+          <View style={styles.listSectionHeader}>
+            <Text style={styles.listSectionTitle}>
+              {categoriaSeleccionada === 'Todos'
+                ? 'Todos los Locales'
+                : `Cocina ${categoriaSeleccionada}`}
+            </Text>
+            <Text style={styles.listCountBadge}>
+              {restaurantesFiltrados.length}{' '}
+              {restaurantesFiltrados.length === 1 ? 'resultado' : 'resultados'}
+            </Text>
+          </View>
+
+          {/* Lista de Restaurantes Minimalista */}
+          {restaurantesFiltrados.length === 0 ? (
+            <View style={styles.emptyState}>
+              <View style={styles.emptyIconCircle}>
+                <Text style={styles.emptyIconText}>🍽️</Text>
+              </View>
+              <Text style={styles.emptyTitle}>No hay restaurantes</Text>
+              <Text style={styles.emptyDescription}>
+                {busqueda || categoriaSeleccionada !== 'Todos'
+                  ? 'No se encontraron resultados para los filtros seleccionados.'
+                  : 'Aún no tienes restaurantes registrados en tu guía.'}
+              </Text>
+              {(busqueda || categoriaSeleccionada !== 'Todos') && (
+                <TouchableOpacity
+                  style={styles.emptyActionBtn}
+                  onPress={() => {
+                    setBusqueda('');
+                    setCategoriaSeleccionada('Todos');
+                  }}
+                >
+                  <Text style={styles.emptyActionBtnText}>Restablecer filtros</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          ) : (
+            <View style={styles.cardsContainer}>
+              {restaurantesFiltrados.map((item) => {
+                const numPuntuacion = Number(item.puntuacion) || 0;
+                const imageUri = getFoodImageUri(item.tipo);
+
+                return (
+                  <View key={item.id} style={styles.card}>
+                    {/* Imagen de cabecera con Badge de Puntuación */}
+                    <View style={styles.cardImageContainer}>
+                      <Image
+                        source={{ uri: imageUri }}
+                        style={styles.cardImage}
+                        resizeMode="cover"
+                      />
+                      <View style={styles.ratingBadge}>
+                        <Text style={styles.ratingStar}>★</Text>
+                        <Text style={styles.ratingNumber}>
+                          {numPuntuacion.toFixed(1)}
+                        </Text>
+                      </View>
+                    </View>
+
+                    {/* Contenido de la Tarjeta */}
+                    <View style={styles.cardBody}>
+                      <View style={styles.cardTagsRow}>
+                        <View style={styles.tagPill}>
+                          <Text style={styles.tagPillText}>{item.tipo}</Text>
+                        </View>
+                        <View style={styles.cityRow}>
+                          <Text style={styles.cityPin}>📍</Text>
+                          <Text style={styles.cityText}>{item.ciudad}</Text>
+                        </View>
+                      </View>
+
+                      <Text style={styles.cardTitle} numberOfLines={1}>
+                        {item.nombre}
+                      </Text>
+
+                      <View style={styles.cardFooter}>
+                        <Text style={styles.cardQualityLabel}>
+                          {getPuntuacionLabel(numPuntuacion)}
+                        </Text>
+                        <Text style={styles.cardIdLabel}>#{item.id}</Text>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </View>
+          )}
+
+          {/* Espaciado inferior */}
+          <View style={{ height: 40 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -485,574 +532,479 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  // Fondo mostaza / dorado idéntico a la plantilla
-  outerBackground: {
+  safeArea: {
     flex: 1,
-    backgroundColor: '#E7A419',
+    backgroundColor: '#F8FAFC', // Slate 50 ultra limpio
+  },
+  keyboardContainer: {
+    flex: 1,
   },
   scrollContent: {
-    paddingBottom: 50,
+    paddingHorizontal: 20,
+    paddingTop: 12,
   },
 
-  // Título superior de la plantilla
-  topHeaderTitleContainer: {
-    alignItems: 'center',
-    paddingVertical: 14,
-  },
-  topHeaderTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '900',
-    letterSpacing: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Courier-Bold' : 'monospace',
-  },
-  topHeaderSubtitle: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 3,
-    marginTop: 2,
-    fontFamily: Platform.OS === 'ios' ? 'Courier-Bold' : 'monospace',
-  },
-
-  // Banner Principal Goodfood
-  heroBannerCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    borderRadius: 24,
-    padding: 18,
-    overflow: 'hidden',
-    position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.18,
-    shadowRadius: 20,
-    elevation: 8,
-  },
-
-  // Formas de fondo orgánicas de la plantilla
-  bgOrganicShapeGreen: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: '58%',
-    height: '100%',
-    backgroundColor: '#EBF1E4', // Sage pálido del banner
-    borderBottomLeftRadius: 180,
-    borderTopLeftRadius: 120,
-    zIndex: 0,
-  },
-  bgOrganicCircleYellow: {
-    position: 'absolute',
-    top: '32%',
-    right: '48%',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#FDE047',
-    opacity: 0.8,
-    zIndex: 0,
-  },
-  bgOrganicDotRed: {
-    position: 'absolute',
-    bottom: 12,
-    right: '34%',
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#EA580C',
-    zIndex: 0,
-  },
-
-  // Navbar Goodfood
-  goodfoodNavbar: {
+  // Header Minimalista
+  header: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    zIndex: 2,
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingTop: 8,
   },
-  logoText: {
-    fontSize: 26,
-    fontWeight: '900',
-    color: '#D92323', // Rojo Goodfood
-    letterSpacing: -0.5,
-  },
-  navMenuRow: {
-    flexDirection: 'row',
-    gap: 12,
-    display: SCREEN_WIDTH < 380 ? 'none' : 'flex',
-  },
-  navItem: {
+  headerEyebrow: {
     fontSize: 11,
     fontWeight: '700',
-    color: '#4B5563',
-    letterSpacing: 0.5,
+    color: '#64748B', // Slate 500
+    letterSpacing: 1.2,
+    marginBottom: 2,
   },
-  navItemActive: {
-    color: '#D92323',
-    fontWeight: '900',
-  },
-  hamburgerBtn: {
-    padding: 6,
-  },
-  hamburgerIcon: {
-    fontSize: 20,
-    fontWeight: '900',
-    color: '#D92323',
-  },
-
-  // Hero Split
-  heroSplit: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 2,
-    marginTop: 4,
-  },
-  heroLeft: {
-    flex: 1.15,
-    paddingRight: 6,
-  },
-  eyebrowText: {
-    fontSize: 10,
+  headerTitle: {
+    fontSize: 28,
     fontWeight: '800',
-    color: '#6B7280',
-    letterSpacing: 1.5,
-    marginBottom: 6,
-  },
-  mainHeading: {
-    fontSize: SCREEN_WIDTH < 380 ? 18 : 21,
-    fontWeight: '900',
-    color: '#111827',
-    lineHeight: SCREEN_WIDTH < 380 ? 22 : 26,
+    color: '#0F172A', // Slate 900
     letterSpacing: -0.5,
-    marginBottom: 14,
   },
-  locationInputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#EEF2F6',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: Platform.OS === 'ios' ? 8 : 4,
-    marginBottom: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  pinIcon: {
-    fontSize: 13,
-    marginRight: 6,
-  },
-  locationTextInput: {
-    flex: 1,
-    fontSize: 12,
-    color: '#1E293B',
-    paddingVertical: 2,
-  },
-  searchCircleBtn: {
-    width: 26,
-    height: 26,
-    borderRadius: 13,
-    backgroundColor: '#FFFFFF',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.1,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  searchIconText: {
-    fontSize: 11,
-  },
-  socialRow: {
-    flexDirection: 'row',
-    gap: 8,
-    alignItems: 'center',
-  },
-  socialDot: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    backgroundColor: '#D92323',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  socialDotText: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: '900',
-  },
-
-  // Hero Lado Derecho
-  heroRight: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    height: 190,
-  },
-  heroBurgerImage: {
-    width: 170,
-    height: 170,
-    zIndex: 1,
-  },
-  badgeDiscount: {
-    position: 'absolute',
-    top: 4,
-    right: 0,
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 3,
-    borderColor: '#D92323',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#D92323',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 3,
-  },
-  badgeDiscountPercent: {
-    fontSize: 16,
-    fontWeight: '900',
-    color: '#D92323',
-    lineHeight: 18,
-  },
-  badgeDiscountText: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#D92323',
-  },
-  wavyDecorContainer: {
-    position: 'absolute',
-    bottom: -4,
-    right: 4,
-    opacity: 0.6,
-  },
-  wavyDecorText: {
-    color: '#EF4444',
-    fontSize: 10,
-    letterSpacing: -2,
-    fontWeight: '900',
-  },
-
-  // Botón de alternar formulario
-  actionRow: {
-    marginHorizontal: 16,
-    marginTop: 18,
-    marginBottom: 6,
-  },
-  toggleFormButton: {
-    backgroundColor: '#111827',
-    paddingVertical: 12,
-    borderRadius: 999,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.2,
+  addButton: {
+    backgroundColor: '#0F172A',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 24,
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.12,
     shadowRadius: 6,
     elevation: 3,
   },
-  toggleFormButtonText: {
+  addButtonActive: {
+    backgroundColor: '#E2E8F0',
+  },
+  addButtonText: {
     color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: 0.5,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  addButtonTextActive: {
+    color: '#334155',
   },
 
-  // Formulario Goodfood
-  formCard: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 2,
-    borderColor: '#FDE047',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.1,
-    shadowRadius: 10,
-    elevation: 4,
-  },
-  formTitle: {
-    fontSize: 15,
-    fontWeight: '900',
-    color: '#111827',
-    letterSpacing: 0.5,
-    marginBottom: 12,
-  },
-  rowInputs: {
+  // Toast / Notificación
+  toast: {
     flexDirection: 'row',
-  },
-  inputPill: {
-    backgroundColor: '#EEF2F6',
+    alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 11,
-    borderRadius: 999,
+    paddingVertical: 12,
+    borderRadius: 14,
+    marginBottom: 16,
+    gap: 10,
+  },
+  toastOk: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  toastError: {
+    backgroundColor: '#FEF2F2',
+    borderWidth: 1,
+    borderColor: '#FECACA',
+  },
+  toastIcon: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  toastText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#1E293B',
+    flex: 1,
+  },
+
+  // Formulario Limpio (Añadir)
+  formContainer: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 22,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    fontSize: 13,
-    color: '#1E293B',
-    marginBottom: 10,
-  },
-  saveSubmitButton: {
-    backgroundColor: '#D92323',
-    paddingVertical: 13,
-    borderRadius: 999,
-    alignItems: 'center',
-    shadowColor: '#D92323',
+    shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
+  },
+  formHeader: {
+    marginBottom: 16,
+  },
+  formTitle: {
+    fontSize: 17,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  formSubtitle: {
+    fontSize: 12,
+    color: '#64748B',
     marginTop: 2,
   },
-  saveSubmitButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '900',
-    letterSpacing: 1,
+  inputGroup: {
+    marginBottom: 14,
   },
-  messageToast: {
-    backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    marginTop: 8,
-    paddingVertical: 9,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#D92323',
-  },
-  messageToastText: {
+  inputLabel: {
     fontSize: 12,
     fontWeight: '700',
-    color: '#D92323',
+    color: '#334155',
+    marginBottom: 6,
   },
-
-  // Carrusel
-  carouselSection: {
-    marginTop: 20,
+  input: {
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: '#0F172A',
   },
-  carouselHeader: {
+  chipSuggestionsRow: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    marginBottom: 12,
+    flexWrap: 'wrap',
+    gap: 6,
+    marginTop: 8,
   },
-  carouselPreTitle: {
-    fontSize: 11,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: 1.5,
-  },
-  carouselMainTitle: {
-    fontSize: 22,
-    fontWeight: '900',
-    color: '#FFFFFF',
-    letterSpacing: -0.5,
-  },
-  counterBadge: {
-    backgroundColor: '#111827',
-    borderRadius: 999,
-    paddingHorizontal: 12,
+  chipSuggestion: {
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 10,
     paddingVertical: 4,
+    borderRadius: 12,
   },
-  counterBadgeText: {
-    color: '#FFFFFF',
+  chipSuggestionActive: {
+    backgroundColor: '#0F172A',
+  },
+  chipSuggestionText: {
     fontSize: 11,
-    fontWeight: '900',
+    fontWeight: '600',
+    color: '#475569',
   },
-  carouselContent: {
-    paddingHorizontal: SIDE_PADDING,
+  chipSuggestionTextActive: {
+    color: '#FFFFFF',
+  },
+  scoreHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  scoreBadge: {
+    backgroundColor: '#FEF3C7',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  scoreBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#D97706',
+  },
+  scoreButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 4,
+  },
+  scoreBtn: {
+    flex: 1,
     paddingVertical: 8,
-  },
-
-  // Tarjeta de Carrusel Goodfood
-  carouselCardContainer: {
-    width: CARD_WIDTH,
-    marginRight: CARD_SPACING,
-  },
-  goodfoodCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    padding: 16,
-    position: 'relative',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.16,
-    shadowRadius: 14,
-    elevation: 6,
-    height: 205,
+    borderRadius: 8,
+    backgroundColor: '#F1F5F9',
+    alignItems: 'center',
     justifyContent: 'center',
   },
-  cardPastelCurve: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    width: '45%',
-    height: '100%',
-    backgroundColor: '#EBF1E4',
-    borderBottomLeftRadius: 120,
-    borderTopLeftRadius: 90,
+  scoreBtnSelected: {
+    backgroundColor: '#0F172A',
   },
-  cardContentRow: {
+  scoreBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#475569',
+  },
+  scoreBtnTextSelected: {
+    color: '#FFFFFF',
+  },
+  submitButton: {
+    backgroundColor: '#0F172A',
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  submitButtonDisabled: {
+    opacity: 0.6,
+  },
+  submitButtonText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Barra de Búsqueda
+  searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    zIndex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 14,
+    height: 48,
+    marginBottom: 14,
   },
-  cardInfoCol: {
-    flex: 1.25,
-    paddingRight: 6,
+  searchIcon: {
+    fontSize: 15,
+    marginRight: 8,
   },
-  cardEyebrow: {
-    fontSize: 9,
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: '#0F172A',
+  },
+  clearBtn: {
+    padding: 6,
+  },
+  clearBtnText: {
+    fontSize: 14,
+    color: '#94A3B8',
+    fontWeight: '700',
+  },
+
+  // Categorías Horizontales
+  categoryScroll: {
+    paddingBottom: 16,
+    gap: 8,
+  },
+  categoryPill: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  categoryPillActive: {
+    backgroundColor: '#0F172A',
+    borderColor: '#0F172A',
+  },
+  categoryPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#475569',
+  },
+  categoryPillTextActive: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+  },
+
+  // Fila de Métricas
+  metricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    paddingVertical: 14,
+    marginBottom: 22,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  metricCard: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  metricValue: {
+    fontSize: 16,
     fontWeight: '800',
-    color: '#D92323',
-    letterSpacing: 1.2,
-    marginBottom: 4,
+    color: '#0F172A',
   },
-  cardRestaurantName: {
-    fontSize: 19,
+  metricLabel: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
+  },
+  metricDivider: {
+    width: 1,
+    height: 24,
+    backgroundColor: '#E2E8F0',
+  },
+
+  // Encabezado de la Sección de Lista
+  listSectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  listSectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.3,
+  },
+  listCountBadge: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+
+  // Contenedor de Tarjetas
+  cardsContainer: {
+    gap: 16,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    overflow: 'hidden',
+    shadowColor: '#0F172A',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.04,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardImageContainer: {
+    width: '100%',
+    height: 160,
+    backgroundColor: '#F1F5F9',
+    position: 'relative',
+  },
+  cardImage: {
+    width: '100%',
+    height: '100%',
+  },
+  ratingBadge: {
+    position: 'absolute',
+    top: 12,
+    right: 12,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  ratingStar: {
+    color: '#FBBF24',
+    fontSize: 12,
     fontWeight: '900',
-    color: '#111827',
-    lineHeight: 22,
-    marginBottom: 8,
+  },
+  ratingNumber: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  cardBody: {
+    padding: 16,
   },
   cardTagsRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 5,
-    marginBottom: 12,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
   },
-  categoryPill: {
-    backgroundColor: '#FFF1F2',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
-  },
-  categoryPillText: {
-    color: '#E11D48',
-    fontSize: 11,
-    fontWeight: '800',
-  },
-  cityPill: {
+  tagPill: {
     backgroundColor: '#F1F5F9',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
-  cityPillText: {
-    color: '#475569',
+  tagPillText: {
     fontSize: 11,
     fontWeight: '700',
+    color: '#334155',
   },
-  orderNowBtn: {
-    backgroundColor: '#D92323',
-    paddingVertical: 7,
-    paddingHorizontal: 16,
-    borderRadius: 999,
-    alignSelf: 'flex-start',
-    shadowColor: '#D92323',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  orderNowBtnText: {
-    color: '#FFFFFF',
-    fontSize: 11,
-    fontWeight: '900',
-    letterSpacing: 0.8,
-  },
-
-  // Columna Derecha de la Tarjeta
-  cardMediaCol: {
-    flex: 0.95,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-    height: 140,
-  },
-  cardFoodImage: {
-    width: 125,
-    height: 125,
-    borderRadius: 14,
-  },
-  cardBadgeScore: {
-    position: 'absolute',
-    top: -2,
-    right: -2,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 2,
-    borderColor: '#D92323',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: '#D92323',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  cardBadgeScoreNum: {
-    fontSize: 12,
-    fontWeight: '900',
-    color: '#D92323',
-    lineHeight: 13,
-  },
-  cardBadgeScoreLabel: {
-    fontSize: 8,
-    fontWeight: '900',
-    color: '#D92323',
-  },
-
-  // Paginación
-  paginationDotsContainer: {
+  cityRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 14,
-    gap: 6,
+    gap: 3,
   },
-  dot: {
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#FFFFFF',
+  cityPin: {
+    fontSize: 11,
+  },
+  cityText: {
+    fontSize: 12,
+    color: '#64748B',
+    fontWeight: '600',
+  },
+  cardTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginBottom: 10,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#F1F5F9',
+  },
+  cardQualityLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#059669', // Emerald 600
+  },
+  cardIdLabel: {
+    fontSize: 11,
+    color: '#94A3B8',
+    fontWeight: '600',
   },
 
-  // Estado vacío
-  emptyCard: {
+  // Estado Vacío
+  emptyState: {
     backgroundColor: '#FFFFFF',
-    marginHorizontal: 16,
-    borderRadius: 20,
-    padding: 26,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    paddingVertical: 40,
+    paddingHorizontal: 24,
     alignItems: 'center',
+    marginTop: 8,
   },
-  emptyEmoji: {
-    fontSize: 40,
-    marginBottom: 6,
+  emptyIconCircle: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#F8FAFC',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
   },
-  emptyText: {
+  emptyIconText: {
+    fontSize: 28,
+  },
+  emptyTitle: {
     fontSize: 16,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0F172A',
+    marginBottom: 6,
   },
-  emptySubtext: {
-    fontSize: 12,
-    color: '#6B7280',
-    marginTop: 4,
+  emptyDescription: {
+    fontSize: 13,
+    color: '#64748B',
     textAlign: 'center',
+    lineHeight: 18,
+    marginBottom: 16,
+  },
+  emptyActionBtn: {
+    backgroundColor: '#F1F5F9',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  emptyActionBtnText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#334155',
   },
 });
