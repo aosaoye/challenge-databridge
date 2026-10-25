@@ -22,6 +22,9 @@ export class Videojuego {
     })
     puntuacion:number
 
+    @Column({type: "varchar", length: 100, nullable: true})
+    genero: string;
+
     @Column({type: "varchar", length: 200, nullable: true})
     imagenUrl?: string;
 }

@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "My Playlists",
+    "slug": "my-playlists",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}

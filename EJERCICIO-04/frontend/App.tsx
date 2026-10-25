@@ -28,6 +28,7 @@ type Restaurante = {
   tipo: string;
   ciudad: string;
   puntuacion: number | string;
+  precioMedio?: number;
 };
 
 // Categorías rápidas para filtrado y registro
@@ -79,6 +80,7 @@ export default function App() {
   const [tipo, setTipo] = useState('');
   const [ciudad, setCiudad] = useState('');
   const [puntuacion, setPuntuacion] = useState(9);
+  const [precioMedio, setPrecioMedio] = useState('25');
   const [mostrarForm, setMostrarForm] = useState(false);
 
   // Search & Filter state
@@ -144,6 +146,7 @@ export default function App() {
           tipo: tipo.trim(),
           ciudad: ciudad.trim(),
           puntuacion: Math.round(puntuacion),
+          precioMedio: Math.max(1, parseInt(precioMedio, 10) || 25),
         }),
       });
 
@@ -153,6 +156,7 @@ export default function App() {
         setTipo('');
         setCiudad('');
         setPuntuacion(9);
+        setPrecioMedio('25');
         setMostrarForm(false);
         await cargarRestaurantes();
       } else {
@@ -319,6 +323,19 @@ export default function App() {
                   placeholderTextColor="#94A3B8"
                   value={ciudad}
                   onChangeText={setCiudad}
+                />
+              </View>
+
+              {/* Campo Precio Medio (Reto) */}
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Precio Medio (€) *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="ej. 25"
+                  placeholderTextColor="#94A3B8"
+                  keyboardType="number-pad"
+                  value={precioMedio}
+                  onChangeText={setPrecioMedio}
                 />
               </View>
 
@@ -509,6 +526,12 @@ export default function App() {
                       <Text style={styles.cardTitle} numberOfLines={1}>
                         {item.nombre}
                       </Text>
+
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 6 }}>
+                        <Text style={{ fontSize: 13, fontWeight: '700', color: '#0F172A' }}>
+                          💶 Precio medio: {Number(item.precioMedio) || 25} €
+                        </Text>
+                      </View>
 
                       <View style={styles.cardFooter}>
                         <Text style={styles.cardQualityLabel}>

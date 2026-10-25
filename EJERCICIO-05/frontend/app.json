@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "Travel Book",
+    "slug": "travel-book",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}

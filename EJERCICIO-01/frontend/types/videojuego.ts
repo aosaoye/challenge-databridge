@@ -4,6 +4,7 @@ export interface Videojuego {
   plataforma: string;
   descripcion?: string;
   puntuacion: number | string;
+  genero?: string;
   imagenUrl?: string;
 }
 

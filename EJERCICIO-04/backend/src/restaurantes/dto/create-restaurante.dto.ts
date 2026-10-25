@@ -17,4 +17,8 @@ export class CreateRestauranteDto {
   @Min(1)
   @Max(10)
   puntuacion: number;
+
+  @IsInt()
+  @Min(1)
+  precioMedio: number;
 }

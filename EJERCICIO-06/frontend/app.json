@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "My Library",
+    "slug": "my-library",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}

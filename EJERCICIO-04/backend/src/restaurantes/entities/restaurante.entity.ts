@@ -32,4 +32,13 @@ export class Restaurante {
         scale: 1
     })
     puntuacion: number;
+
+    @Column({
+        type:'decimal',
+        precision: 5,
+        scale: 2,
+        nullable: true,
+        default: 25.0
+    })
+    precioMedio: number;
 }

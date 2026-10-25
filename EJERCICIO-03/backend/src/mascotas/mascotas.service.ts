@@ -20,24 +20,28 @@ private readonly repository: Repository<Mascota>){}
           raza:'Golden Retriever',
           edad:3,
           ciudad:'Ciudad de Guatemala',
+          nivelEnergia: 'ALTO'
         }),
         this.repository.create({
           nombre:'Milo',
           raza:'Golden Retriever',
           edad:3,
           ciudad:'Ciudad de Guatemala',
+          nivelEnergia: 'MEDIO'
         }),
         this.repository.create({
           nombre:'Lucy',
           raza:'Criollo',
           edad:2,
           ciudad:'Antigua Guatemala',
+          nivelEnergia: 'ALTO'
         }),
         this.repository.create({
           nombre:'Coco',
           raza:'Poodle',
           edad:4,
           ciudad:'Quetzaltenango',
+          nivelEnergia: 'BAJO'
         }),
         this.repository.create({
           nombre:'Rocky',

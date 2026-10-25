@@ -16,4 +16,7 @@ export class Mascota {
 
     @Column({ name: 'ciudad', nullable: false, length: 50})
     ciudad: string;
+
+    @Column({ name: 'nivelEnergia', nullable: true, length: 20, default: 'ALTO' })
+    nivelEnergia: string;
 }

@@ -185,6 +185,19 @@ export const SceneCarousel: React.FC<SceneCarouselProps> = ({
               </View>
             </View>
 
+            {activeGame.genero ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+                <View style={{ backgroundColor: 'rgba(255,255,255,0.14)', paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: 12, fontWeight: '700' }}>
+                    🎮 {activeGame.genero}
+                  </Text>
+                </View>
+                <Text style={{ color: 'rgba(255,255,255,0.6)', fontSize: 12, fontWeight: '600' }}>
+                  {activeGame.plataforma}
+                </Text>
+              </View>
+            ) : null}
+
             {activeGame.descripcion ? (
               <Text style={styles.description} numberOfLines={3}>
                 {activeGame.descripcion}

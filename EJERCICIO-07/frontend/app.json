@@ -1,0 +1,9 @@
+{
+  "expo": {
+    "name": "Sneaker Vault",
+    "slug": "sneaker-vault",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light"
+  }
+}
